@@ -1,0 +1,13 @@
+nltk
+gensim
+torch 
+transformers 
+requests 
+wikipedia
+datasets
+scikit-learn
+torch
+torchaudio 
+torchvision
+transformers
+huggingface_hub
