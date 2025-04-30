@@ -18,6 +18,7 @@ import torch.optim as optim
 from itertools import chain
 from sklearn.metrics import precision_recall_fscore_support, classification_report
 import pickle
+import os
 
 # Ensure NLTK dependencies are available
 user_input = input("Download NLKT (y/n): ")
@@ -127,8 +128,6 @@ if(user_input == 'y'):
         corpus.extend(processed)
         counter=counter+1
         print(f'Counter:{counter}')
-        if(counter>199):
-            break
 
     with open('wikiProcessedTexts.pkl', 'wb') as f:
         pickle.dump((items, labels, texts, corpus), f)
@@ -161,7 +160,7 @@ if(user_input == 'y'):
         val_items.append(title)
         val_labels.append(label)
         val_texts.append(processed)
-        corpus.extend(processed)  # include validation text in Word2Vec training
+        #corpus.extend(processed)  # include validation text in Word2Vec training
 
     with open('wikiProcessedTextsVal.pkl', 'wb') as f:
         pickle.dump((val_items, val_labels, val_texts, corpus), f)
@@ -169,14 +168,13 @@ if(user_input == 'y'):
 with open('wikiProcessedTextsVal.pkl', 'rb') as f:
     val_items, val_labels, val_texts, corpus = pickle.load(f)
 
-
+#print(items,val_items)
 
 # Train Word2Vec model
 def train_word2vec(corpus, vector_size=100, window=5, min_count=5):
     return Word2Vec(corpus, vector_size=vector_size, window=window, min_count=min_count, workers=4)
 
-# Train Word2Vec model
-w2v_model = train_word2vec(corpus)
+
 
 # Dataset class
 class WikiDataset(Dataset):
@@ -206,7 +204,7 @@ class WikiClassifier(nn.Module):
         return self.fc2(self.relu(self.fc1(x)))
 
 # Train function
-def train_model(model, dataset, epochs=10, batch_size=32):
+def train_model(model, dataset, epochs=50, batch_size=32):
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -225,15 +223,31 @@ def train_model(model, dataset, epochs=10, batch_size=32):
         print(f"Epoch {epoch+1}, Loss: {total_loss:.4f}")
 
 # Build dataset and train
-wiki_dataset = WikiDataset(texts, labels, w2v_model)
-model = WikiClassifier(input_dim=w2v_model.vector_size, hidden_dim=64, num_classes=3)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+user_input = input("Train? (y: train / n: load existing): ")
+if(user_input == 'y'):
+    # Train Word2Vec model
+    w2v_model = train_word2vec(corpus)
+    w2v_model.save("word2vec.model")
+
+    wiki_dataset = WikiDataset(texts, labels, w2v_model)
+    model = WikiClassifier(input_dim=w2v_model.vector_size, hidden_dim=64, num_classes=3)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    train_model(model, wiki_dataset)
+    torch.save(model.state_dict(), 'wiki_classifier.pth')
+else:
+    w2v_model = Word2Vec.load("word2vec.model")
+
+    wiki_dataset = WikiDataset(texts, labels, w2v_model)
+    model = WikiClassifier(input_dim=w2v_model.vector_size, hidden_dim=64, num_classes=3)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    model.load_state_dict(torch.load('wiki_classifier.pth', map_location=device))
+
 model.to(device)
-train_model(model, wiki_dataset)
-
-# (Optional) Save model
-torch.save(model.state_dict(), 'wiki_classifier.pth')
-
 wiki_val_dataset = WikiDataset(val_texts, val_labels, w2v_model)
 
 model.eval()
