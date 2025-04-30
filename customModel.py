@@ -3,130 +3,186 @@ import pandas as pd
 import numpy as np
 from collections import defaultdict
 from datasets import load_dataset
-import requests
 import wikipedia
 import re
 import nltk
-nltk.download('punkt')  # Downloads tokenizer models
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import word_tokenize, sent_tokenize
+from nltk.corpus import stopwords, wordnet
+from nltk.stem import WordNetLemmatizer
+from nltk import pos_tag
+from gensim.models import Word2Vec
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+import torch.optim as optim
+from itertools import chain
+from sklearn.metrics import precision_recall_fscore_support, classification_report
+import pickle
 
-Simulated dataset: list of dicts with QID, name, category
-Normally you'd extract this from the cultural dataset
-sample_data = [
-  {"qid": "Q252187", "name": "áo dài", "category": "clothing", "wiki_title": "Áo_dài"},
-    {"qid": "Q11299", "name": "t-shirt", "category": "clothing", "wiki_title": "T-shirt"},
-    {"qid": "Q213434", "name": "kente cloth", "category": "clothing", "wiki_title": "Kente_cloth"},
-    {"qid": "Q15772", "name": "sushi", "category": "food", "wiki_title": "Sushi"},
-    {"qid": "Q27436", "name": "pizza", "category": "food", "wiki_title": "Pizza"},
-    {"qid": "Q779", "name": "injera", "category": "food", "wiki_title": "Injera"},
-]
+# Ensure NLTK dependencies are available
+user_input = input("Download NLKT (y/n): ")
+if(user_input == 'y'):
+    nltk.download('punkt')
+    nltk.download('stopwords')
+    nltk.download('wordnet')
+    nltk.download('averaged_perceptron_tagger')
 
+# Load dataset
 dataset = load_dataset('sapienzanlp/nlp2025_hw1_cultural_dataset')
-
-# Step 1: Get Wikipedia pageviews
-def get_pageviews(title, lang="en"):
-    url = f"https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{lang}.wikipedia/all-access/all-agents/{title}/monthly/20230101/20231231"
-    r = requests.get(url)
-    if r.status_code == 200:
-        data = r.json()
-        total_views = sum(item['views'] for item in data['items'])
-        return total_views
-    else:
-        return None
-
-# Step 2: Attach views to each item
-for item in sample_data:
-    item["views"] = get_pageviews(item["wiki_title"])
-
-# Step 3: Compute category-wise stats
-category_visits = defaultdict(list)
-for item in sample_data:
-    if item["views"] is not None:
-        category_visits[item["category"]].append(item["views"])
-
-category_stats = {
-    category: (np.mean(views), np.std(views)) for category, views in category_visits.items()
+label_map = {
+    "cultural agnostic": 0,
+    "cultural representative": 1,
+    "cultural exclusive": 2
 }
 
-# Step 4: Classify each item based on dynamic thresholds
-for item in sample_data:
-    views = item.get("views")
-    category = item["category"]
-    if views is None:
-        item["label_pred"] = "unknown"
-        continue
-
-    mean, std = category_stats[category]
-    if views >= mean + std:
-        item["label_pred"] = "cultural agnostic"
-    elif views >= mean - std:
-        item["label_pred"] = "cultural representative"
+# Helper: map POS tag to WordNet POS
+def get_wordnet_pos(tag):
+    if tag.startswith('J'):
+        return wordnet.ADJ
+    elif tag.startswith('V'):
+        return wordnet.VERB
+    elif tag.startswith('N'):
+        return wordnet.NOUN
+    elif tag.startswith('R'):
+        return wordnet.ADV
     else:
-        item["label_pred"] = "cultural exclusive"
+        return wordnet.NOUN
 
-        def get_pageviews(title, lang="en"):
-        url = f"https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{lang}.wikipedia/all-access/all-agents/{title}/monthly/20230101/20231231"
-    print(f"Calling: {url}")  # DEBUG
-    r = requests.get(url)
-    print(f"Status: {r.status_code}")  # DEBUG
-    if r.status_code == 200:
-        data = r.json()
-        total_views = sum(item['views'] for item in data['items'])
-        return total_views
-    else:
-        print("FAILED:", r.text)
-        return None
+# Preprocess text into list of tokenized sentences
+def preprocess(text):
+    if not text:
+        return []
 
+    lemmatizer = WordNetLemmatizer()
+    stop_words = set(stopwords.words('english'))
 
-# Display results
-df = pd.DataFrame(sample_data)
-print(df[["name", "category", "views", "label_pred"]])
+    sentences = sent_tokenize(text.lower())
+    processed_sentences = []
 
+    for sentence in sentences:
+        words = word_tokenize(sentence)
+        words = [word for word in words if word.isalpha() and word not in stop_words]
+        pos_tags = pos_tag(words)
+        lemmatized = [lemmatizer.lemmatize(word, get_wordnet_pos(tag)) for word, tag in pos_tags]
+        if lemmatized:
+            processed_sentences.append(lemmatized)
 
+    return processed_sentences
 
-
-#########################################################
-#########################################################
-#########################################################
-
-
-
-
-
+# Get Wikipedia title from Wikidata ID
 def getWikipediaPage(wikidataId, lang='en'):
     url = f"https://www.wikidata.org/wiki/Special:EntityData/{wikidataId}.json"
-    response = requests.get(url).json()
     try:
-        title = response['entities'][wikidataId]['sitelinks'][f'{lang}wiki']['title']
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        title = data['entities'][wikidataId]['sitelinks'][f'{lang}wiki']['title']
         return title
-    except KeyError:
+    except Exception as e:
+        print(f"[ERROR] Wikidata fetch failed for {wikidataId}: {e}")
         return None
 
+# Get Wikipedia content from title
 def getWikipediaText(title, lang='en'):
     wikipedia.set_lang(lang)
     try:
         return wikipedia.page(title).content
-    except:
+    except wikipedia.exceptions.DisambiguationError as e:
+        print(f"[WARNING] '{title}' is ambiguous: {e.options[:3]}...")
         return ""
+    except wikipedia.exceptions.PageError:
+        print(f"[ERROR] Page '{title}' not found.")
+        return ""
+    except Exception as e:
+        print(f"[ERROR] Unexpected error on '{title}': {e}")
+        return ""
+
+user_input = input("Download pages from Wikipedia (y/n): ")
+if(user_input == 'y'):
     
-def preprocess(text):
-    text = re.sub(r'[^a-zA-Z ]', '', text)
-    tokens = word_tokenize(text.lower())
-    return [t for t in tokens if len(t) > 2]
 
-from gensim.models import Word2Vec
+    # Download and preprocess all items
+    items, labels, texts, corpus = [], [], [], []
 
+    counter = 0
+    for sample in dataset['train']:
+        qid = sample['item'].split('/')[-1]
+        label_str = sample['label'].lower()
+        label = label_map.get(label_str)
+        if label is None:
+            continue
+
+        title = getWikipediaPage(qid)
+        if not title:
+            continue
+
+        text = getWikipediaText(title)
+        processed = preprocess(text)
+        if not processed:
+            continue
+
+        items.append(title)
+        labels.append(label)
+        texts.append(processed)
+        corpus.extend(processed)
+        counter=counter+1
+        print(f'Counter:{counter}')
+        if(counter>199):
+            break
+
+    with open('wikiProcessedTexts.pkl', 'wb') as f:
+        pickle.dump((items, labels, texts, corpus), f)
+
+with open('wikiProcessedTexts.pkl', 'rb') as f:
+    items, labels, texts, corpus = pickle.load(f)
+
+
+
+user_input = input("Download pages from Wikipedia for validation (y/n): ")
+if(user_input == 'y'):
+    # Extend corpus with validation set before training Word2Vec
+    val_items, val_labels, val_texts = [], [], []
+    for sample in dataset['validation']:
+        qid = sample['item'].split('/')[-1]
+        label_str = sample['label'].lower()
+        label = label_map.get(label_str)
+        if label is None:
+            continue
+
+        title = getWikipediaPage(qid)
+        if not title:
+            continue
+
+        text = getWikipediaText(title)
+        processed = preprocess(text)
+        if not processed:
+            continue
+
+        val_items.append(title)
+        val_labels.append(label)
+        val_texts.append(processed)
+        corpus.extend(processed)  # include validation text in Word2Vec training
+
+    with open('wikiProcessedTextsVal.pkl', 'wb') as f:
+        pickle.dump((val_items, val_labels, val_texts, corpus), f)
+
+with open('wikiProcessedTextsVal.pkl', 'rb') as f:
+    val_items, val_labels, val_texts, corpus = pickle.load(f)
+
+
+
+# Train Word2Vec model
 def train_word2vec(corpus, vector_size=100, window=5, min_count=5):
     return Word2Vec(corpus, vector_size=vector_size, window=window, min_count=min_count, workers=4)
 
-import torch
-from torch.utils.data import Dataset
+# Train Word2Vec model
+w2v_model = train_word2vec(corpus)
 
-#dataset for classification
+# Dataset class
 class WikiDataset(Dataset):
     def __init__(self, texts, labels, w2v_model):
         self.labels = labels
-        self.vectors = [self.text_to_vec(text, w2v_model) for text in texts]
+        self.vectors = [self.text_to_vec(list(chain.from_iterable(text)), w2v_model) for text in texts]
 
     def text_to_vec(self, tokens, w2v_model):
         vecs = [w2v_model.wv[word] for word in tokens if word in w2v_model.wv]
@@ -137,24 +193,19 @@ class WikiDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.vectors[idx], self.labels[idx]
-    
-#classifier
-import torch.nn as nn
 
+# Neural classifier
 class WikiClassifier(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_classes):
         super(WikiClassifier, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_dim, num_classes)
-    
+
     def forward(self, x):
         return self.fc2(self.relu(self.fc1(x)))
 
-#training
-from torch.utils.data import DataLoader
-import torch.optim as optim
-
+# Train function
 def train_model(model, dataset, epochs=10, batch_size=32):
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     criterion = nn.CrossEntropyLoss()
@@ -163,6 +214,8 @@ def train_model(model, dataset, epochs=10, batch_size=32):
     for epoch in range(epochs):
         total_loss = 0
         for X, y in loader:
+            X = X.to(device)       # Move inputs to the same device as the model
+            y = y.to(device)
             optimizer.zero_grad()
             output = model(X)
             loss = criterion(output, y)
@@ -171,5 +224,31 @@ def train_model(model, dataset, epochs=10, batch_size=32):
             total_loss += loss.item()
         print(f"Epoch {epoch+1}, Loss: {total_loss:.4f}")
 
-#save model
-torch.save(model.state_dict(), 'classifier.pth')
+# Build dataset and train
+wiki_dataset = WikiDataset(texts, labels, w2v_model)
+model = WikiClassifier(input_dim=w2v_model.vector_size, hidden_dim=64, num_classes=3)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+train_model(model, wiki_dataset)
+
+# (Optional) Save model
+torch.save(model.state_dict(), 'wiki_classifier.pth')
+
+wiki_val_dataset = WikiDataset(val_texts, val_labels, w2v_model)
+
+model.eval()
+model.to(device)
+
+all_preds = []
+all_labels = []
+with torch.no_grad():
+    for X, y in DataLoader(wiki_val_dataset, batch_size=32):
+        X = X.to(device)
+        y = y.to(device)
+        outputs = model(X)
+        preds = torch.argmax(outputs, dim=1)
+        all_preds.extend(preds.tolist())
+        all_labels.extend(y.tolist())
+
+print("\nValidation Results:")
+print(classification_report(all_labels, all_preds, digits=4))
