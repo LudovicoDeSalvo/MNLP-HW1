@@ -21,7 +21,7 @@ import pickle
 import os
 
 # Ensure NLTK dependencies are available
-user_input = input("Download NLKT (y/n): ")
+user_input = input("Download NLKT (y/n): ").lower()
 if(user_input == 'y'):
     nltk.download('punkt')
     nltk.download('stopwords')
@@ -98,7 +98,7 @@ def getWikipediaText(title, lang='en'):
         print(f"[ERROR] Unexpected error on '{title}': {e}")
         return ""
 
-user_input = input("Download pages from Wikipedia (y/n): ")
+user_input = input("Download pages from Wikipedia (y/n): ").lower()
 if(user_input == 'y'):
     
 
@@ -137,7 +137,7 @@ with open('wikiProcessedTexts.pkl', 'rb') as f:
 
 
 
-user_input = input("Download pages from Wikipedia for validation (y/n): ")
+user_input = input("Download pages from Wikipedia for validation (y/n): ").lower()
 if(user_input == 'y'):
     # Extend corpus with validation set before training Word2Vec
     val_items, val_labels, val_texts = [], [], []
@@ -224,7 +224,7 @@ def train_model(model, dataset, epochs=50, batch_size=32):
 
 # Build dataset and train
 
-user_input = input("Train? (y: train / n: load existing): ")
+user_input = input("Train? (y: train / n: load existing): ").lower()
 if(user_input == 'y'):
     # Train Word2Vec model
     w2v_model = train_word2vec(corpus)
@@ -265,4 +265,4 @@ with torch.no_grad():
         all_labels.extend(y.tolist())
 
 print("\nValidation Results:")
-print(classification_report(all_labels, all_preds, digits=4))
+print(classification_report(all_labels, all_preds, digits=5))
