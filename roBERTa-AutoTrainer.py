@@ -5,6 +5,7 @@ from transformers import RobertaTokenizer, RobertaForSequenceClassification, Tra
 from datasets import load_dataset
 from torch.utils.data import Dataset
 from sklearn.metrics import precision_recall_fscore_support, classification_report, accuracy_score
+import os
 
 
 # Load dataset
@@ -108,7 +109,7 @@ if user_input == 'y':
     print("\nBest hyperparameters found:")
     print(best_trial)
 
-    # Setting found hyperparameters
+    # Setting found hyperparameters and saving them
     best_args = training_args
     best_args.learning_rate = best_trial.hyperparameters["learning_rate"]
     best_args.per_device_train_batch_size = best_trial.hyperparameters["per_device_train_batch_size"]
@@ -116,6 +117,9 @@ if user_input == 'y':
     best_args.weight_decay = best_trial.hyperparameters["weight_decay"]
 
     trainer.args = best_args
+    training_args.save(model_path + '/training_args.bin')
+
+    #flag
     hp_tuned = True
 
 #Training
@@ -124,7 +128,12 @@ if hp_tuned == True :
 else:
     user_input = input("Train (DO if not done before)? y/n: ").lower()
 
-if (user_input == 'y') :   
+if (user_input == 'y') :
+
+    #check if we have already generated best hps, if so load them
+    if os.path.exists(model_path + '/training_args.bin'):
+        training_args = torch.load(model_path + '/training_args.bin')
+
     trainer.train()
     trainer.save_model(model_path)
     tokenizer.save_pretrained(model_path)
