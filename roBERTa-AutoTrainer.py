@@ -61,7 +61,7 @@ def model_init():
 # Hyperparameter search space
 def hp_space(trial):
     return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-5, log=False),
         "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [8, 16, 32, 64, 128]),
         "num_train_epochs": trial.suggest_int("num_train_epochs", 3, 7),
         "weight_decay": trial.suggest_float("weight_decay", 0.0, 0.3),
@@ -117,7 +117,8 @@ if user_input == 'y':
     best_args.weight_decay = best_trial.hyperparameters["weight_decay"]
 
     trainer.args = best_args
-    training_args.save(model_path + '/training_args.bin')
+    # Save training arguments as JSON
+    best_args.to_json_file(model_path + "/training_args.json")
 
     #flag
     hp_tuned = True
@@ -131,8 +132,8 @@ else:
 if (user_input == 'y') :
 
     #check if we have already generated best hps, if so load them
-    if os.path.exists(model_path + '/training_args.bin'):
-        training_args = torch.load(model_path + '/training_args.bin')
+    if os.path.exists(model_path + "/training_args.json"):
+        training_args = TrainingArguments.from_json_file(model_path + "/training_args.json")
 
     trainer.train()
     trainer.save_model(model_path)
