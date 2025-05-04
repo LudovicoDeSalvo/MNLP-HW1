@@ -11,7 +11,7 @@ The goal is to classify Wikidata entities into three cultural categories:
 
 ## Contents
 
-###  **Language Model (LM) Approach**
+### 📝 **Language Model (LM) Approach**
 
 - **`roBERTa-AutoTrainer.py`**  
   Final version of the LM-based classifier using HuggingFace's Trainer API.  
@@ -33,7 +33,7 @@ All fields are concatenated with `[SEP]` tokens and fed to the transformer model
 
 ---
 
-###  **Non-LM Approach (Word2Vec + Page Views)**
+### 🔍 **Non-LM Approach (Word2Vec + Page Views)**
 
 - **`customModel.py`**  
   Final implementation of the non-LM model.  
@@ -53,3 +53,10 @@ The script:
 - Trained models are stored in `.pth` format.
 - Word2Vec embeddings and all intermediate preprocessed data are saved in `.pkl` format.
 - Classification results and confusion matrices are available in the appendix of the LaTeX report.
+
+---
+
+## Evaluation Scripts
+
+The evaluation scripts are available at:  
+[Google Drive folder](https://drive.google.com/drive/u/1/folders/1vyRWuaqrh67u6NSqPLv9U8GFDiflwPkH)
