@@ -25,7 +25,7 @@ import json
 
 #### Dimensionality settings #####
 vector_size = 200
-lang_dim = 20
+lang_dim = 15
 view_dim = 3
 total_extra_dim = lang_dim + view_dim
 total_dim = vector_size + total_extra_dim
@@ -131,14 +131,14 @@ def train_word2vec(corpus, vector_size, window=5, min_count=5):
 def hyperparameter_tuning():
     
     #setting things up
-    hidden_dims = [128, 256]
-    learning_rates = [0.001, 0.0005]
-    batch_sizes = [32]
-    epochs_list = [50, 60, 70, 80, 90]
+    hidden_dims = [64, 128, 256]
+    learning_rates = [0.001, 0.0005, 0.0002]
+    batch_sizes = [32, 64]
+    epochs_list = [30, 40, 50, 60, 70, 80, 90]
     # hidden_dims = [128]
-    # learning_rates = [0.001]
+    # learning_rates = [0.0005]
     # batch_sizes = [32]
-    # epochs_list = [70]
+    # epochs_list = [30]
 
     best_accuracy = 0
     best_model = None
@@ -157,7 +157,7 @@ def hyperparameter_tuning():
                     acc = 0
                     this_hp_best_model = None
 
-                    for i in range(5):
+                    for i in range(20):
 
                         # Create model
                         model = WikiClassifier(input_dim= total_dim , hidden_dim=hidden_dim, num_classes=3)
@@ -475,7 +475,7 @@ else:
     with open("best_params.json", "r") as f:
         best_params = json.load(f)
 
-    finalModel = WikiClassifier(input_dim=best_params['vector_size'] + total_extra_dim, hidden_dim=best_params['hidden_dim'], num_classes=3)
+    finalModel = WikiClassifier(input_dim= vector_size + total_extra_dim, hidden_dim=best_params['hidden_dim'], num_classes=3)
     finalModel.load_state_dict(torch.load('wiki_classifier.pth'))
     finalModel.to(device)
 
