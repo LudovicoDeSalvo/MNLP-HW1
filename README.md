@@ -13,13 +13,9 @@ The goal is to classify Wikidata entities into three cultural categories:
 
 ###  **Language Model (LM) Approach**
 
-- **`roBERTa-AutoTrainer.py`**  
+ **`roBERTa-AutoTrainer.py`**  
   Final version of the LM-based classifier using HuggingFace's Trainer API.  
   Includes optional hyperparameter tuning via Optuna.
-
-- **`roBERTa.py`**  
-  Initial version of the LM model.  
-  This is a deprecated implementation without tuning functionality.
 
 The LM pipeline is based on **roberta-base** and fine-tunes the model using the following metadata fields from each item:
 
