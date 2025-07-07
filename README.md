@@ -1,4 +1,4 @@
-# MNLP Homework 1 — Cultural Concept Classification
+# Cultural Concept Classification
 
 This repository contains the implementation of two classification pipelines developed for the **MNLP 2025 Homework 1**.  
 The goal is to classify Wikidata entities into three cultural categories:
